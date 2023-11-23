@@ -89,7 +89,7 @@ class Prerelease(VersionPart):
     def accept(self, char: str) -> int:
         result = super().accept(char)
 
-        if (result == 1 or char == '.') and (self.parts[-1] == "" or self.__invalid_numeric__):
+        if (result == 1 or char == '.') and (len(self.parts) == 0 or self.parts[-1] == "" or self.__invalid_numeric__):
             raise ValueError("Invalid version.")
         if result == 0:
             if char == '.':
