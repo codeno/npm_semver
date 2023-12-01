@@ -61,7 +61,7 @@ class Numeric(VersionPart):
         return result and (self.value == "" or self.value not in "0" + (WILDCARD if self.__is_in_expression__ else ""))
 
     def compare(self, numeric: "Numeric") -> int:
-        return 0 if self.value in WILDCARD else int(self.value) - int(numeric.value)
+        return 0 if numeric.value in WILDCARD else int(self.value) - int(numeric.value)
 
 
 class Patch(Numeric):
@@ -192,13 +192,16 @@ class Version:
             if result != 0 or version.parts[i].value in WILDCARD:
                 break
 
-        if not include_prerelease and self.prerelease != "" and (result != 0 or version.prerelease.value == ""):
+        if not include_prerelease and self.prerelease.value != "" and (result != 0 or version.prerelease.value == ""):
             return None
 
-        if include_prerelease or (result == 0 and version.prerelease.value != ""):
+        if result == 0 and (include_prerelease or version.prerelease.value != ""):
             result = self.prerelease.compare(version.prerelease)
 
         return result
+
+    def __str__(self) -> str:
+        return self.value
 
 
 """################ version expression ################"""
@@ -266,7 +269,8 @@ class Partial(ConditionPart):
         self.value.construct()
 
         erase = False
-        for part in self.value.parts:
+        for i in range(1, 4):
+            part = self.value.parts[i]
             if erase:
                 part.value = ""
             if part.value in WILDCARD:
@@ -302,6 +306,9 @@ class Condition:
     def contains(self, version: Version) -> bool:
         pass
 
+    def __str__(self) -> str:
+        return ""
+
 
 class Primitive(Condition):
     def __init__(self, char: str) -> None:
@@ -314,22 +321,29 @@ class Primitive(Condition):
 
     def contains(self, version: Version) -> bool:
         result = version.compare(self.version.value)
-        return False if result is None else eval(f"result{self.comparator.value}0")
-        #
-        # if self.comparator.value == ">":
-        #     return result > 0
-        # if self.comparator.value == "<":
-        #     return result < 0
-        # if self.comparator.value == ">=":
-        #     return result >= 0
-        # if self.comparator.value == "<=":
-        #     return result <= 0
-        # return result == 0
+
+        if result is None:
+            return False
+        if self.comparator.value == ">":
+            return result > 0
+        if self.comparator.value == "<":
+            return result < 0
+        if self.comparator.value == ">=":
+            return result >= 0
+        if self.comparator.value == "<=":
+            return result <= 0
+        return result == 0
+
+    def __str__(self) -> str:
+        return self.comparator.value + str(self.version.value)
 
 
 class PartialCondition(Condition):
     def contains(self, version: Version) -> bool:
         return version.compare(self.version.value) == 0
+
+    def __str__(self) -> str:
+        return str(self.version.value)
 
 
 class Tilde(Condition):
@@ -345,7 +359,7 @@ class Tilde(Condition):
         if self.version.value.major.value not in WILDCARD:
             version = Version(is_in_expression=True)
             if self.version.value.minor.value not in WILDCARD:
-                version.major = self.version.value.major
+                version.major.value = self.version.value.major.value
                 version.minor.value = str(int(self.version.value.minor.value) + 1)
             elif version.major.value != "":
                 version.major.value = str(int(self.version.value.major.value) + 1)
@@ -358,6 +372,9 @@ class Tilde(Condition):
             result = version.compare(self.__bounds__[1], self.__bounds__[0].prerelease.value != "")
             result = result is not None and result < 0
         return result
+
+    def __str__(self) -> str:
+        return '~' + str(self.version.value)
 
 
 class Caret(Tilde):
@@ -376,8 +393,11 @@ class Caret(Tilde):
             else:
                 break
         if index > 0:
-            version.parts[index].value = chr(int(version.parts[index].value) + 1)
+            version.parts[index].value = str(int(version.parts[index].value) + 1)
             self.__bounds__.append(version)
+
+    def __str__(self) -> str:
+        return '^' + str(self.version.value)
 
 
 class Hyphen(Condition):
@@ -400,6 +420,9 @@ class Hyphen(Condition):
                 if result:
                     break
         return result
+
+    def __str__(self) -> str:
+        return str(self.__bounds__[0]) + ' - ' + str(self.__bounds__[1])
 
 
 class VersionExpression:
@@ -459,3 +482,11 @@ class VersionExpression:
                 break
 
         return result
+
+    def __str__(self) -> str:
+        value = ""
+        for version_range in self.ranges:
+            for condition in version_range:
+                value += str(condition) + " "
+            value += "||"
+        return value[:-2] if value != "" else ""
